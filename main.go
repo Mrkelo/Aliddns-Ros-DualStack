@@ -2,10 +2,12 @@ package main
 
 import (
 	middlewares "Aliddns-Ros/log-handler"
-	"github.com/denverdino/aliyungo/dns"
+	"net"
+	"net/http"
+
+	"github.com/aliyun/alibaba-cloud-sdk-go/services/alidns"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
-	"net/http"
 )
 
 func init() {
@@ -45,47 +47,75 @@ func AddUpdateAliddns(c *gin.Context) {
 	conf.RR = c.Query("RR")
 	conf.IpAddr = c.Query("IpAddr")
 
+	// 识别IP类型
+	ip := net.ParseIP(conf.IpAddr)
+	if ip == nil {
+		log.Println("IP地址格式错误：" + conf.IpAddr)
+		c.String(http.StatusOK, "iperr")
+		return
+	}
+
+	recordType := "A"
+	if ip.To4() == nil {
+		recordType = "AAAA"
+	}
+
 	//Info.Print("当前路由公网IP：" + conf.IpAddr)
 	//log.SetOutput()
-	log.Println("当前路由公网IP：" + conf.IpAddr)
+	log.Println("当前路由公网IP：" + conf.IpAddr + " 类型：" + recordType)
 	log.Println("进行阿里云登录……")
 
 	// 连接阿里云服务器，获取DNS信息
-	client := dns.NewClient(conf.AccessKeyID, conf.AccessKeySecret)
-	client.SetDebug(false)
-	domainInfo := new(dns.DescribeDomainRecordsArgs)
-	domainInfo.DomainName = conf.DomainName
-	oldRecord, err := client.DescribeDomainRecords(domainInfo)
+	// RegionId 填 "cn-hangzhou" 即可，全局通用
+	client, err := alidns.NewClientWithAccessKey("cn-hangzhou", conf.AccessKeyID, conf.AccessKeySecret)
 	if err != nil {
-		log.Println("阿里云登录失败！请查看错误日志！", err)
+		log.Println("阿里云登录失败！", err)
 		c.String(http.StatusOK, "loginerr")
 		return
 	}
+
 	log.Println("阿里云登录成功！")
 	log.Println("进行域名及IP比对……")
 
+	// 查找现有记录
+	request := alidns.CreateDescribeDomainRecordsRequest()
+	request.DomainName = conf.DomainName
+	request.RRKeyWord = conf.RR
+	request.TypeKeyWord = recordType
+
+	response, err := client.DescribeDomainRecords(request)
+	if err != nil {
+		log.Println("获取解析记录失败！", err)
+		c.String(http.StatusOK, "finderr")
+		return
+	}
+
 	var exsitRecordID string
-	for _, record := range oldRecord.DomainRecords.Record {
-		if record.DomainName == conf.DomainName && record.RR == conf.RR {
+	// var currentRecordValue string
+
+	// 遍历查找匹配的记录 (虽然用了过滤，但保险起见还是确认一下)
+	for _, record := range response.DomainRecords.Record {
+		if record.RR == conf.RR && record.Type == recordType {
 			if record.Value == conf.IpAddr {
 				log.Println("当前配置解析地址与公网IP相同，不需要修改。")
 				c.String(http.StatusOK, "same")
 				return
 			}
 			exsitRecordID = record.RecordId
+			break
 		}
 	}
 
-	if 0 < len(exsitRecordID) {
+	if len(exsitRecordID) > 0 {
 		// 有配置记录，则匹配配置文件，进行更新操作
-		updateRecord := new(dns.UpdateDomainRecordArgs)
-		updateRecord.RecordId = exsitRecordID
-		updateRecord.RR = conf.RR
-		updateRecord.Value = conf.IpAddr
-		updateRecord.Type = dns.ARecord
-		rsp := new(dns.UpdateDomainRecordResponse)
-		rsp, err := client.UpdateDomainRecord(updateRecord)
-		if nil != err {
+		updateRequest := alidns.CreateUpdateDomainRecordRequest()
+		updateRequest.RecordId = exsitRecordID
+		updateRequest.RR = conf.RR
+		updateRequest.Type = recordType
+		updateRequest.Value = conf.IpAddr
+
+		rsp, err := client.UpdateDomainRecord(updateRequest)
+		if err != nil {
 			log.Println("修改解析地址信息失败!", err)
 			c.String(http.StatusOK, "iperr")
 		} else {
@@ -94,14 +124,14 @@ func AddUpdateAliddns(c *gin.Context) {
 		}
 	} else {
 		// 没有找到配置记录，那么就新增一个
-		newRecord := new(dns.AddDomainRecordArgs)
-		newRecord.DomainName = conf.DomainName
-		newRecord.RR = conf.RR
-		newRecord.Value = conf.IpAddr
-		newRecord.Type = dns.ARecord
-		rsp := new(dns.AddDomainRecordResponse)
-		rsp, err = client.AddDomainRecord(newRecord)
-		if nil != err {
+		addRequest := alidns.CreateAddDomainRecordRequest()
+		addRequest.DomainName = conf.DomainName
+		addRequest.RR = conf.RR
+		addRequest.Type = recordType
+		addRequest.Value = conf.IpAddr
+
+		rsp, err := client.AddDomainRecord(addRequest)
+		if err != nil {
 			log.Println("添加新域名解析失败！", err)
 			c.String(http.StatusOK, "domainerr")
 		} else {

@@ -2,8 +2,44 @@
 支持服务器部署及Docker容器部署两种方式
 ---
 ## 1.1、服务器部署
-    *自行编译并运行；   
-    *使用已编译好的Release版本；  
+### 编译
+```bash
+go build -o aliddns-server
+```
+
+### 启动
+**直接运行：**
+```bash
+./aliddns-server
+```
+
+**后台运行：**
+```bash
+nohup ./aliddns-server > aliddns.log 2>&1 &
+```
+
+### Systemd 服务 (推荐)
+创建文件 `/etc/systemd/system/aliddns.service`:
+```ini
+[Unit]
+Description=AliDDNS Webhook Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/path/to/directory
+ExecStart=/path/to/directory/aliddns-server
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+启动服务：
+```bash
+systemctl enable aliddns
+systemctl start aliddns
+```
 ## 1.2、Docker容器部署（本fork暂无docker）
 ~~ Docker镜像：[Docker Hub](https://hub.docker.com/r/lsprain/aliddns).  ~~
 ---
