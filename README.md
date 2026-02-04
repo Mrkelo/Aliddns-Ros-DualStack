@@ -4,9 +4,8 @@
 ## 1.1、服务器部署
     *自行编译并运行；   
     *使用已编译好的Release版本；  
-   ~~信得过的也可以直接用我自己部署的服务：tts.lsprain.tech:3000，免部署;~~
-## 1.2、Docker容器部署
-Docker镜像：[Docker Hub](https://hub.docker.com/r/lsprain/aliddns).  
+## 1.2、Docker容器部署（本fork暂无docker）
+~~ Docker镜像：[Docker Hub](https://hub.docker.com/r/lsprain/aliddns).  ~~
 ---
 # 二、RouterOS7.x 脚本代码
 ROS路由脚本如下：  
