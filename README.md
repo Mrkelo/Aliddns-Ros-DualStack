@@ -1,55 +1,74 @@
-# 一、部署方式
-目前仅支持服务器部署方式
+# Aliddns-Ros-DualStack
+
+本项目 Fork 自 [lsprain/Aliddns-Ros](https://github.com/lsprain/Aliddns-Ros)。由于原项目已停止维护多年，本项目进行了深度重构与功能增强。
+
+### 🌟 主要改进
+
+* **内核升级**：将阿里 DNS SDK 从第三方包更换为**阿里云官方 SDK**。
+* **双栈支持**：原生支持 **IPv4** 与 **IPv6** 解析记录同步更新。
+* **架构优化**：重构 RouterOS 脚本，支持单次触发同时更新双栈地址，效率更高。
+
 ---
-## 1.1、服务器部署
-可使用github上的release中的二进制文件，也可以自己编译
-### 二进制程序编译
+
+## 一、 部署方式
+
+目前支持 Linux 服务器二进制部署，Docker 镜像正在规划中。
+
+### 1.1 编译与运行
+
+确保你的环境中已安装 Go 1.18 或以上版本。
+
 ```bash
-git pull
+# 获取仓库
+git clone https://github.com/Mrkelo/Aliddns-Ros-DualStack.git
 cd Aliddns-Ros-DualStack
-go build -o aliddns-server
-```
 
-### 服务启动
-**直接运行：**
-```bash
+# 编译程序
+go build -o aliddns-server main.go
+
+# 测试启动
 ./aliddns-server
+
 ```
 
-**直接后台运行：**
-```bash
-nohup ./aliddns-server > aliddns.log 2>&1 &
-```
+### 1.2 使用 Systemd 管理 (推荐)
 
-### 使用Systemd 服务 (推荐)
-创建文件 `/etc/systemd/system/aliddns.service`:
+为了保证服务在后台稳定运行及开机自启，建议创建服务单元文件 `/etc/systemd/system/aliddns.service`:
+
 ```ini
 [Unit]
-Description=AliDDNS Webhook Server
+Description=AliDDNS Webhook Server for ROS
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/path/to/directory
-ExecStart=/path/to/directory/aliddns-server
+# 请根据实际路径修改以下两项
+WorkingDirectory=/opt/aliddns
+ExecStart=/opt/aliddns/aliddns-server
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
+
 ```
-启动服务：
+
+**管理命令：**
+
 ```bash
+systemctl daemon-reload
 systemctl enable aliddns
 systemctl start aliddns
+
 ```
-## 1.2、Docker容器部署（本fork暂无docker）
 
 ---
-# 二、RouterOS7.x 脚本代码
-ROS路由脚本如下： 
-请修改脚本中的 AccessKeyID、AccessKeySecret、DomainName、pppoe、v6Interface、v6Pool、服务地址 参数后使用
-```
+
+## 二、 RouterOS 7.x 脚本配置
+
+在 ROS 的 `System -> Scripts` 中添加以下脚本。请根据注释修改对应的**密钥**和**接口名称**。
+
+```routeros
 # ======= 基础账号配置 =======
 :local AccessKeyID "xxxx"
 :local AccessKeySecret "xxxx"
@@ -62,7 +81,7 @@ ROS路由脚本如下：
 :local IpAddr4 [/ip address get [/ip address find interface=$pppoe] address]
 :set IpAddr4 [:pick $IpAddr4 0 [:find $IpAddr4 "/"]]
 
-# ======= IPv6 设置 (根据你测试成功的参数) =======
+# ======= IPv6 设置 =======
 :local RR6 "home6"
 :local v6Interface "lan1"
 :local v6Pool "ipv6_cu"
@@ -95,10 +114,42 @@ ROS路由脚本如下：
     } on-error={ :log error "IPv6 DDNS 访问失败" }
 }
 ```
-# 三、其它方式
-method：```post```   
-url：```http://服务地址:8800/aliddns?AccessKeyID=XXXXXX&AccessKeySecret=XXXXXX&RR=XX&DomainName=XXX&IpAddr=XXX```
 
-# 四、公共服务接口
-因涉及明文传输用户阿里云的AccessKeyID和AccessKeySecret，存在安全风险，本项目暂不提供公共服务接口，请务必自行部署与内网后使用。
+---
 
+## 三、 API 接口说明
+
+如果你希望通过其他工具（如 `curl`）调用，接口定义如下：
+
+* **Method**: `GET` / `POST`
+* **URL**: `http://{IP}:8800/aliddns`
+* **参数说明**:
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| AccessKeyID | 是 | 阿里云 RAM 账号 Key |
+| AccessKeySecret | 是 | 阿里云 RAM 账号 Secret |
+| DomainName | 是 | 主域名 (例: `baidu.com`) |
+| RR | 是 | 主机记录 (例: `www` 或 `home`) |
+| IpAddr | 是 | 需要指向的 IP 地址 |
+
+---
+
+## ⚠️ 安全警告
+
+> [!CAUTION]
+> **请勿公网暴露此服务！**
+> 由于 ROS 脚本限制，目前 AccessKey 采用明文传输。为了您的账号安全：
+> 1. 请务必将本项目部署在**内网**环境。
+> 2. 建议在阿里云控制台为 AccessKey 配置**最小权限原则**（仅授予云解析权限）。
+> 3. 本项目不提供、也不建议使用任何公共服务接口。
+> 
+> 
+
+---
+
+## 鸣谢
+
+感谢原作者 [lsprain](https://github.com/lsprain) 的灵感与初始代码贡献。
+
+---
